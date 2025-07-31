@@ -37,7 +37,7 @@ HTML_TEMPLATE = Template(r'''<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="utf-8">
-<title>Powiadomienia o nowych odcinkach K-dram</title>
+<title>Powiadomienia o nowych odcinkach z DramaQueen</title>
 <style type="text/css">
   body{margin:0;padding:0;background:#f7f9fa;font-family:Arial,Helvetica,sans-serif;color:#333}
   a{color:#ff6699;text-decoration:none}
