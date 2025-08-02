@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-import os, re, sys, html, logging, smtplib
+import os, re, sys, html, logging, smtplib, json
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Tuple
 from email.message import EmailMessage
@@ -111,6 +111,15 @@ class EpisodeCheckResult:
     latest_ready: Optional[int]
     max_found: Optional[int]
     error: Optional[str] = None
+
+
+@dataclass
+class UserConfig:
+    sheet_title: str
+    worksheet_title: str
+    email_to: str
+    always_send: bool = True
+    service_account_file: str = 'service_account.json'
 
 def getenv_int(name: str, default: int) -> int:
     try:
@@ -247,12 +256,11 @@ def check_series(session: requests.Session, series: SeriesRow) -> EpisodeCheckRe
     except Exception as e:
         return EpisodeCheckResult(None, None, error=f'{series.nazwa}: błąd pobierania: {e}')
 
-def send_email(subject: str, html_body: str) -> None:
+def send_email(subject: str, html_body: str, email_to: str) -> None:
     smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
     smtp_port = int(os.environ.get('SMTP_PORT', '587'))
     smtp_user = os.environ.get('SMTP_USER')
     smtp_pass = os.environ.get('SMTP_PASS')
-    email_to  = os.environ.get('EMAIL_TO')
     email_from = os.environ.get('EMAIL_FROM', smtp_user)
     if not (smtp_user and smtp_pass and email_to):
         raise RuntimeError('Brak ustawień SMTP/EMAIL_TO')
@@ -271,28 +279,50 @@ def send_email(subject: str, html_body: str) -> None:
         server.send_message(msg)
         logger.info('Wysłano e-mail HTML do %s', email_to)
 
-def main() -> int:
-    load_dotenv()
-    spreadsheet_title = os.environ.get('SHEET_TITLE', 'dramy')
-    worksheet_title   = os.environ.get('WORKSHEET_TITLE', 'arkusz1')
-    service_account_file = os.environ.get('GSPREAD_SERVICE_ACCOUNT_FILE', 'service_account.json')
-    always_send = os.environ.get('ALWAYS_SEND', '1') in ('1','true','True','yes','tak')
 
-    # 1. Sheets
-    try:
-        gc = authenticate_gspread(service_account_file)
-        sh, ws = open_sheet(gc, spreadsheet_title, worksheet_title)
-        rows, header, mapping = read_series(ws)
-        logger.info('Wczytano %d wierszy', len(rows))
-    except Exception as e:
-        logger.exception('Błąd dostępu do Google Sheets: %s', e)
+def load_user_configs() -> List[UserConfig]:
+    cfg_path = os.environ.get('USERS_CONFIG')
+    if cfg_path:
         try:
-            send_email('Sprawdzacz odcinków – błąd Sheets', f'<pre>Błąd: {html.escape(str(e))}</pre>')
+            with open(cfg_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            configs = []
+            for d in data:
+                configs.append(UserConfig(
+                    sheet_title=d.get('sheet_title') or d.get('title') or 'dramy',
+                    worksheet_title=d.get('worksheet_title', 'arkusz1'),
+                    email_to=d.get('email_to'),
+                    always_send=d.get('always_send', True),
+                    service_account_file=d.get('service_account_file', 'service_account.json'),
+                ))
+            return configs
+        except Exception as e:
+            logger.exception('Błąd odczytu konfiguracji użytkowników: %s', e)
+
+    email_to = os.environ.get('EMAIL_TO')
+    return [UserConfig(
+        sheet_title=os.environ.get('SHEET_TITLE', 'dramy'),
+        worksheet_title=os.environ.get('WORKSHEET_TITLE', 'arkusz1'),
+        email_to=email_to,
+        always_send=os.environ.get('ALWAYS_SEND', '1') in ('1','true','True','yes','tak'),
+        service_account_file=os.environ.get('GSPREAD_SERVICE_ACCOUNT_FILE', 'service_account.json'),
+    )]
+
+
+def process_user(cfg: UserConfig, session: requests.Session) -> int:
+    try:
+        gc = authenticate_gspread(cfg.service_account_file)
+        sh, ws = open_sheet(gc, cfg.sheet_title, cfg.worksheet_title)
+        rows, header, mapping = read_series(ws)
+        logger.info('[%s] Wczytano %d wierszy', cfg.email_to, len(rows))
+    except Exception as e:
+        logger.exception('[%s] Błąd dostępu do Google Sheets: %s', cfg.email_to, e)
+        try:
+            send_email('Sprawdzacz odcinków – błąd Sheets', f'<pre>Błąd: {html.escape(str(e))}</pre>', cfg.email_to)
         except Exception:
             pass
         return 2
 
-    session = build_requests_session()
     new_items: List[dict] = []
     problems: List[str] = []
 
@@ -336,17 +366,26 @@ def main() -> int:
     subject = 'Nowe odcinki do obejrzenia – Sprawdzacz'
     html_body = build_email_html(new_items, problems)
 
-    if always_send or new_items or problems:
+    if cfg.always_send or new_items or problems:
         try:
-            send_email(subject, html_body)
+            send_email(subject, html_body, cfg.email_to)
         except Exception as e:
-            logger.exception('Błąd wysyłki e-mail: %s', e)
+            logger.exception('[%s] Błąd wysyłki e-mail: %s', cfg.email_to, e)
             return 3
     else:
-        logger.info('Brak zmian – e-mail nie został wysłany.')
+        logger.info('[%s] Brak zmian – e-mail nie został wysłany.', cfg.email_to)
 
-    logger.info('Zakończono.')
     return 0
+
+def main() -> int:
+    load_dotenv()
+    session = build_requests_session()
+    configs = load_user_configs()
+    exit_code = 0
+    for cfg in configs:
+        exit_code = max(exit_code, process_user(cfg, session))
+    logger.info('Zakończono.')
+    return exit_code
 
 
 if __name__ == '__main__':
