@@ -14,26 +14,34 @@ from jinja2 import Template
 import gspread
 from gspread.exceptions import APIError, SpreadsheetNotFound, WorksheetNotFound
 
-LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
-logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format='%(asctime)s [%(levelname)s] %(message)s')
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
 logger = logging.getLogger(__name__)
 
-EPISODE_ANY_RE = re.compile(r'Odcinek\s*(\d+)', re.IGNORECASE)
+EPISODE_ANY_RE = re.compile(r"Odcinek\s*(\d+)", re.IGNORECASE)
 
 DEFAULT_USER_AGENT = (
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-    '(KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
 
 COLUMN_ALIASES: Dict[str, List[str]] = {
-    'nazwa': ['nazwa', 'tytuł', 'tytul'],
-    'link': ['link', 'url'],
-    'obejrzany_odcinek': ['obejrzany_odcinek', 'last_watched', 'obejrzany'],
-    'odcinek_na_stronie': ['odcinek_na_stronie', 'last_on_site', 'na_stronie'],
-    'liczba_odcinków': ['liczba_odcinków', 'liczba_odicnków', 'liczba_odc', 'max_odcinek'],
+    "nazwa": ["nazwa", "tytuł", "tytul"],
+    "link": ["link", "url"],
+    "obejrzany_odcinek": ["obejrzany_odcinek", "last_watched", "obejrzany"],
+    "odcinek_na_stronie": ["odcinek_na_stronie", "last_on_site", "na_stronie"],
+    "liczba_odcinków": [
+        "liczba_odcinków",
+        "liczba_odicnków",
+        "liczba_odc",
+        "max_odcinek",
+    ],
 }
 
-HTML_TEMPLATE = Template(r'''<!DOCTYPE html>
+HTML_TEMPLATE = Template(r"""<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="utf-8">
@@ -90,7 +98,8 @@ HTML_TEMPLATE = Template(r'''<!DOCTYPE html>
 </table>
 </center>
 </body>
-</html>''' )
+</html>""")
+
 
 @dataclass
 class SeriesRow:
@@ -119,13 +128,17 @@ class UserConfig:
     worksheet_title: str
     email_to: str
     always_send: bool = False
-    service_account_file: str = 'service_account.json'
+    service_account_file: str = os.environ.get(
+        "GSPREAD_SERVICE_ACCOUNT_FILE", "service_account.json"
+    )
+
 
 def getenv_int(name: str, default: int) -> int:
     try:
         return int(os.environ.get(name, str(default)))
     except Exception:
         return default
+
 
 def parse_int(value: object, default: int = 0) -> int:
     try:
@@ -136,9 +149,10 @@ def parse_int(value: object, default: int = 0) -> int:
         s = str(value).strip()
         if not s:
             return default
-        return int(re.sub(r'\D', '', s))
+        return int(re.sub(r"\D", "", s))
     except Exception:
         return default
+
 
 def build_email_html(new_items: List[dict], problems: List[str]) -> str:
     new_items = new_items or []
@@ -146,9 +160,10 @@ def build_email_html(new_items: List[dict], problems: List[str]) -> str:
     try:
         return HTML_TEMPLATE.render(new_items=new_items, problems=problems)
     except Exception as e:
-        logger.exception('Błąd renderowania HTML: %s', e)
+        logger.exception("Błąd renderowania HTML: %s", e)
         esc = html.escape(str(e))
-        return f'<pre>Błąd generowania HTML: {esc}\nNowe: {len(new_items)}, Problemy: {len(problems)}</pre>'
+        return f"<pre>Błąd generowania HTML: {esc}\nNowe: {len(new_items)}, Problemy: {len(problems)}</pre>"
+
 
 def extract_episode_number(text: str) -> Optional[int]:
     m = EPISODE_ANY_RE.search(text)
@@ -159,154 +174,195 @@ def extract_episode_number(text: str) -> Optional[int]:
             return None
     return None
 
+
 def find_episodes(html_text: str) -> EpisodeCheckResult:
     try:
-        soup = BeautifulSoup(html_text, 'html.parser')
-        p_tags = soup.find_all('p', class_=lambda c: c and 'toggler' in c)
+        soup = BeautifulSoup(html_text, "html.parser")
+        p_tags = soup.find_all("p", class_=lambda c: c and "toggler" in c)
         latest_ready = None
         max_found = None
         for p in p_tags:
-            num = extract_episode_number(p.get_text(' ', strip=True))
+            num = extract_episode_number(p.get_text(" ", strip=True))
             if num is not None:
                 if max_found is None or num > max_found:
                     max_found = num
-            has_img = p.find('img') is not None
+            has_img = p.find("img") is not None
             if not has_img and num is not None:
                 if latest_ready is None or num > latest_ready:
                     latest_ready = num
         if latest_ready is None and max_found is None:
-            return EpisodeCheckResult(None, None, error='Nie znaleziono nagłówków odcinków.')
+            return EpisodeCheckResult(
+                None, None, error="Nie znaleziono nagłówków odcinków."
+            )
         return EpisodeCheckResult(latest_ready, max_found, None)
     except Exception as e:
-        return EpisodeCheckResult(None, None, error=f'Błąd parsowania HTML: {e}')
+        return EpisodeCheckResult(None, None, error=f"Błąd parsowania HTML: {e}")
+
 
 def authenticate_gspread(service_account_file: str) -> gspread.Client:
     return gspread.service_account(filename=service_account_file)
+
 
 def open_sheet(gc: gspread.Client, spreadsheet_title: str, worksheet_title: str):
     try:
         sh = gc.open(spreadsheet_title)
     except SpreadsheetNotFound as e:
-        raise RuntimeError('Nie znaleziono arkusza.') from e
+        raise RuntimeError("Nie znaleziono arkusza.") from e
     try:
         ws = sh.worksheet(worksheet_title)
     except WorksheetNotFound:
         ws = sh.sheet1
-        logger.warning('Nie znaleziono zakładki %s – używam pierwszej.', worksheet_title)
+        logger.warning(
+            "Nie znaleziono zakładki %s – używam pierwszej.", worksheet_title
+        )
     return sh, ws
 
+
 def map_headers(header_row: List[str]) -> Dict[str, int]:
-    normalized = [str(h or '').strip().lower() for h in header_row]
+    normalized = [str(h or "").strip().lower() for h in header_row]
     mapping: Dict[str, int] = {}
     for canon, aliases in COLUMN_ALIASES.items():
         for a in aliases:
             if a in normalized:
                 mapping[canon] = normalized.index(a)
                 break
-    missing = [k for k in ('nazwa','link','obejrzany_odcinek','odcinek_na_stronie','liczba_odcinków') if k not in mapping]
+    missing = [
+        k
+        for k in (
+            "nazwa",
+            "link",
+            "obejrzany_odcinek",
+            "odcinek_na_stronie",
+            "liczba_odcinków",
+        )
+        if k not in mapping
+    ]
     if missing:
-        raise RuntimeError(f'Brak wymaganych kolumn: {missing}')
+        raise RuntimeError(f"Brak wymaganych kolumn: {missing}")
     return mapping
+
 
 def read_series(ws) -> Tuple[List[SeriesRow], List[str], Dict[str, int]]:
     values = ws.get_all_values()
     if not values:
-        raise RuntimeError('Arkusz jest pusty.')
+        raise RuntimeError("Arkusz jest pusty.")
     header = values[0]
     mapping = map_headers(header)
     rows: List[SeriesRow] = []
     for i, row in enumerate(values[1:], start=2):
+
         def get(idx: int) -> str:
-            return row[idx] if idx < len(row) else ''
-        rows.append(SeriesRow(
-            row_idx=i,
-            nazwa=get(mapping['nazwa']),
-            link=get(mapping['link']),
-            obejrzany_odcinek=parse_int(get(mapping['obejrzany_odcinek']), 0),
-            odcinek_na_stronie=parse_int(get(mapping['odcinek_na_stronie']), 0),
-            liczba_odcinków=parse_int(get(mapping['liczba_odcinków']), 0),
-        ))
+            return row[idx] if idx < len(row) else ""
+
+        rows.append(
+            SeriesRow(
+                row_idx=i,
+                nazwa=get(mapping["nazwa"]),
+                link=get(mapping["link"]),
+                obejrzany_odcinek=parse_int(get(mapping["obejrzany_odcinek"]), 0),
+                odcinek_na_stronie=parse_int(get(mapping["odcinek_na_stronie"]), 0),
+                liczba_odcinków=parse_int(get(mapping["liczba_odcinków"]), 0),
+            )
+        )
     return rows, header, mapping
+
 
 def update_cell(ws, row_idx: int, col_idx: int, value: object):
     ws.update_cell(row_idx, col_idx, value)
 
+
 def build_requests_session() -> requests.Session:
     s = requests.Session()
-    s.headers.update({'User-Agent': DEFAULT_USER_AGENT})
-    php_sessid = os.environ.get('PHPSESSID')
+    s.headers.update({"User-Agent": DEFAULT_USER_AGENT})
+    php_sessid = os.environ.get("PHPSESSID")
     if php_sessid:
-        s.cookies.set('PHPSESSID', php_sessid, domain='www.dramaqueen.pl')
-    wp_logged_name = os.environ.get('WP_LOGGED_IN_COOKIE_NAME')
-    wp_logged_val = os.environ.get('WP_LOGGED_IN_COOKIE_VALUE')
+        s.cookies.set("PHPSESSID", php_sessid, domain="www.dramaqueen.pl")
+    wp_logged_name = os.environ.get("WP_LOGGED_IN_COOKIE_NAME")
+    wp_logged_val = os.environ.get("WP_LOGGED_IN_COOKIE_VALUE")
     if wp_logged_name and wp_logged_val:
-        s.cookies.set(wp_logged_name, wp_logged_val, domain='www.dramaqueen.pl')
-    wp_sec_name = os.environ.get('WP_SEC_COOKIE_NAME')
-    wp_sec_val = os.environ.get('WP_SEC_COOKIE_VALUE')
+        s.cookies.set(wp_logged_name, wp_logged_val, domain="www.dramaqueen.pl")
+    wp_sec_name = os.environ.get("WP_SEC_COOKIE_NAME")
+    wp_sec_val = os.environ.get("WP_SEC_COOKIE_VALUE")
     if wp_sec_name and wp_sec_val:
-        s.cookies.set(wp_sec_name, wp_sec_val, domain='www.dramaqueen.pl')
+        s.cookies.set(wp_sec_name, wp_sec_val, domain="www.dramaqueen.pl")
     return s
+
 
 def check_series(session: requests.Session, series: SeriesRow) -> EpisodeCheckResult:
     try:
         resp = session.get(series.link, timeout=60)
         if resp.status_code != 200:
-            return EpisodeCheckResult(None, None, error=f'{series.nazwa}: HTTP {resp.status_code}')
+            return EpisodeCheckResult(
+                None, None, error=f"{series.nazwa}: HTTP {resp.status_code}"
+            )
         return find_episodes(resp.text)
     except Exception as e:
-        return EpisodeCheckResult(None, None, error=f'{series.nazwa}: błąd pobierania: {e}')
+        return EpisodeCheckResult(
+            None, None, error=f"{series.nazwa}: błąd pobierania: {e}"
+        )
+
 
 def send_email(subject: str, html_body: str, email_to: str) -> None:
-    smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
-    smtp_port = int(os.environ.get('SMTP_PORT', '587'))
-    smtp_user = os.environ.get('SMTP_USER')
-    smtp_pass = os.environ.get('SMTP_PASS')
-    email_from = os.environ.get('EMAIL_FROM', smtp_user)
+    smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+    email_from = os.environ.get("EMAIL_FROM", smtp_user)
     if not (smtp_user and smtp_pass and email_to):
-        raise RuntimeError('Brak ustawień SMTP/EMAIL_TO')
+        raise RuntimeError("Brak ustawień SMTP/EMAIL_TO")
 
     msg = EmailMessage()
-    msg['From'] = email_from
-    msg['To'] = email_to
-    msg['Subject'] = subject
-    msg.add_alternative(html_body, subtype='html')
+    msg["From"] = email_from
+    msg["To"] = email_to
+    msg["Subject"] = subject
+    msg.add_alternative(html_body, subtype="html")
 
     with smtplib.SMTP(smtp_host, smtp_port, timeout=60) as server:
         server.ehlo()
         if smtp_port == 587:
-            server.starttls(); server.ehlo()
+            server.starttls()
+            server.ehlo()
         server.login(smtp_user, smtp_pass)
         server.send_message(msg)
-        logger.info('Wysłano e-mail HTML do %s', email_to)
+        logger.info("Wysłano e-mail HTML do %s", email_to)
 
 
 def load_user_configs() -> List[UserConfig]:
-    cfg_path = os.environ.get('USERS_CONFIG')
+    cfg_path = os.environ.get("USERS_CONFIG")
     if cfg_path:
         try:
-            with open(cfg_path, 'r', encoding='utf-8') as f:
+            with open(cfg_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             configs = []
             for d in data:
-                configs.append(UserConfig(
-                    sheet_title=d.get('sheet_title') or d.get('title') or 'dramy',
-                    worksheet_title=d.get('worksheet_title', 'arkusz1'),
-                    email_to=d.get('email_to'),
-                    always_send=d.get('always_send', True),
-                    service_account_file=d.get('service_account_file', 'service_account.json'),
-                ))
+                configs.append(
+                    UserConfig(
+                        sheet_title=d.get("sheet_title") or d.get("title") or "dramy",
+                        worksheet_title=d.get("worksheet_title", "arkusz1"),
+                        email_to=d.get("email_to"),
+                        always_send=d.get("always_send", True),
+                        service_account_file=d.get(
+                            "service_account_file", "service_account.json"
+                        ),
+                    )
+                )
             return configs
         except Exception as e:
-            logger.exception('Błąd odczytu konfiguracji użytkowników: %s', e)
+            logger.exception("Błąd odczytu konfiguracji użytkowników: %s", e)
 
-    email_to = os.environ.get('EMAIL_TO')
-    return [UserConfig(
-        sheet_title=os.environ.get('SHEET_TITLE', 'dramy'),
-        worksheet_title=os.environ.get('WORKSHEET_TITLE', 'arkusz1'),
-        email_to=email_to,
-        always_send=os.environ.get('ALWAYS_SEND', '1') in ('1','true','True','yes','tak'),
-        service_account_file=os.environ.get('GSPREAD_SERVICE_ACCOUNT_FILE', 'service_account.json'),
-    )]
+    email_to = os.environ.get("EMAIL_TO")
+    return [
+        UserConfig(
+            sheet_title=os.environ.get("SHEET_TITLE", "dramy"),
+            worksheet_title=os.environ.get("WORKSHEET_TITLE", "arkusz1"),
+            email_to=email_to,
+            always_send=os.environ.get("ALWAYS_SEND", "1")
+            in ("1", "true", "True", "yes", "tak"),
+            service_account_file=os.environ.get(
+                "GSPREAD_SERVICE_ACCOUNT_FILE", "service_account.json"
+            ),
+        )
+    ]
 
 
 def process_user(cfg: UserConfig, session: requests.Session) -> int:
@@ -314,11 +370,15 @@ def process_user(cfg: UserConfig, session: requests.Session) -> int:
         gc = authenticate_gspread(cfg.service_account_file)
         sh, ws = open_sheet(gc, cfg.sheet_title, cfg.worksheet_title)
         rows, header, mapping = read_series(ws)
-        logger.info('[%s] Wczytano %d wierszy', cfg.email_to, len(rows))
+        logger.info("[%s] Wczytano %d wierszy", cfg.email_to, len(rows))
     except Exception as e:
-        logger.exception('[%s] Błąd dostępu do Google Sheets: %s', cfg.email_to, e)
+        logger.exception("[%s] Błąd dostępu do Google Sheets: %s", cfg.email_to, e)
         try:
-            send_email('Sprawdzacz odcinków – błąd Sheets', f'<pre>Błąd: {html.escape(str(e))}</pre>', cfg.email_to)
+            send_email(
+                "Sprawdzacz odcinków – błąd Sheets",
+                f"<pre>Błąd: {html.escape(str(e))}</pre>",
+                cfg.email_to,
+            )
         except Exception:
             pass
         return 2
@@ -330,7 +390,7 @@ def process_user(cfg: UserConfig, session: requests.Session) -> int:
         if s.is_done:
             continue
         if not s.link:
-            problems.append(f'{s.nazwa}: brak linku w arkuszu')
+            problems.append(f"{s.nazwa}: brak linku w arkuszu")
             continue
         result = check_series(session, s)
         if result.error:
@@ -342,40 +402,45 @@ def process_user(cfg: UserConfig, session: requests.Session) -> int:
 
         try:
             if latest_ready > s.odcinek_na_stronie:
-                update_cell(ws, s.row_idx, mapping['odcinek_na_stronie'] + 1, latest_ready)
+                update_cell(
+                    ws, s.row_idx, mapping["odcinek_na_stronie"] + 1, latest_ready
+                )
                 s.odcinek_na_stronie = latest_ready
         except APIError as e:
-            problems.append(f'{s.nazwa}: błąd aktualizacji arkusza: {e}')
+            problems.append(f"{s.nazwa}: błąd aktualizacji arkusza: {e}")
 
         try:
             if max_found > s.liczba_odcinków:
-                update_cell(ws, s.row_idx, mapping['liczba_odcinków'] + 1, max_found)
+                update_cell(ws, s.row_idx, mapping["liczba_odcinków"] + 1, max_found)
                 s.liczba_odcinków = max_found
         except APIError as e:
-            problems.append(f'{s.nazwa}: błąd aktualizacji liczby odcinków: {e}')
+            problems.append(f"{s.nazwa}: błąd aktualizacji liczby odcinków: {e}")
 
         if s.obejrzany_odcinek < s.odcinek_na_stronie:
-            new_items.append({
-                'tytuł': s.nazwa,
-                'nowy_odcinek': s.odcinek_na_stronie,
-                'ostatni_obejrzany': s.obejrzany_odcinek,
-                'liczba_odcinków': s.liczba_odcinków,
-                'link': s.link,
-            })
+            new_items.append(
+                {
+                    "tytuł": s.nazwa,
+                    "nowy_odcinek": s.odcinek_na_stronie,
+                    "ostatni_obejrzany": s.obejrzany_odcinek,
+                    "liczba_odcinków": s.liczba_odcinków,
+                    "link": s.link,
+                }
+            )
 
-    subject = 'Nowe odcinki do obejrzenia – Sprawdzacz'
+    subject = "Nowe odcinki do obejrzenia – Sprawdzacz"
     html_body = build_email_html(new_items, problems)
 
     if cfg.always_send or new_items or problems:
         try:
             send_email(subject, html_body, cfg.email_to)
         except Exception as e:
-            logger.exception('[%s] Błąd wysyłki e-mail: %s', cfg.email_to, e)
+            logger.exception("[%s] Błąd wysyłki e-mail: %s", cfg.email_to, e)
             return 3
     else:
-        logger.info('[%s] Brak zmian – e-mail nie został wysłany.', cfg.email_to)
+        logger.info("[%s] Brak zmian – e-mail nie został wysłany.", cfg.email_to)
 
     return 0
+
 
 def main() -> int:
     load_dotenv()
@@ -384,9 +449,9 @@ def main() -> int:
     exit_code = 0
     for cfg in configs:
         exit_code = max(exit_code, process_user(cfg, session))
-    logger.info('Zakończono.')
+    logger.info("Zakończono.")
     return exit_code
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
