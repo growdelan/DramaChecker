@@ -118,7 +118,7 @@ class UserConfig:
     sheet_title: str
     worksheet_title: str
     email_to: str
-    always_send: bool = True
+    always_send: bool = False
     service_account_file: str = 'service_account.json'
 
 def getenv_int(name: str, default: int) -> int:
