@@ -57,7 +57,7 @@ HTML_TEMPLATE = Template(r'''<!DOCTYPE html>
 <body>
 <center class="wrapper">
 <table class="main" role="presentation" cellpadding="0" cellspacing="0">
-<tr><td class="header"><h1>Twoje nowe odcinki K-dram</h1></td></tr>
+<tr><td class="header"><h1>Twoje nowe odcinki z DramaQueen</h1></td></tr>
 
 {% if new_items and new_items|length > 0 %}
   {% for d in new_items %}
