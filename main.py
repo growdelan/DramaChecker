@@ -342,7 +342,7 @@ def load_user_configs() -> List[UserConfig]:
                         email_to=d.get("email_to"),
                         always_send=d.get("always_send", True),
                         service_account_file=d.get(
-                            "service_account_file", "service_account.json"
+                            "service_account_file", os.environ.get("GSPREAD_SERVICE_ACCOUNT_FILE")
                         ),
                     )
                 )
