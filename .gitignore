@@ -1,4 +1,7 @@
 .venv
 .env
+.DS_Store
+__pycache__/
 *.json
 *.sh
+!users.example.json
