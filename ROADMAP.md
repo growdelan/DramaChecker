@@ -64,7 +64,7 @@ Uwagi:
 
 ---
 
-## Milestone 1.1: Dokumentacja i testy dla automatycznego logowania (planned)
+## Milestone 1.1: Dokumentacja i testy dla automatycznego logowania (done)
 
 Cel:
 - domknąć wdrożenie automatycznego logowania od strony jakościowej i operacyjnej
@@ -81,3 +81,5 @@ Zakres:
 
 Uwagi:
 - milestone zależny od realizacji Milestone 1.0
+- README uzupełnione o konfigurację i uruchamianie Playwright
+- istnieją testy jednostkowe oraz smoke test `process_user()` bez realnego IO

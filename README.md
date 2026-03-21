@@ -84,3 +84,7 @@ Ręczne cookie mogą nadal działać jako fallback awaryjny:
 ```bash
 uv run python -m unittest discover -s tests -p "test_*.py"
 ```
+
+Zestaw testów obejmuje:
+- testy jednostkowe logiki sesji i ponownego logowania
+- smoke test głównego przepływu `process_user()` z użyciem stubów/fake’ów, bez realnego IO
