@@ -60,6 +60,7 @@ Wdrożone rozszerzenie wynikające z PRD `001-auto-cookie-login-prd.md`:
 - automatyczne logowanie przez rzeczywistą przeglądarkę sterowaną Playwright
 - wykrywanie utraty autoryzacji i automatyczne odświeżanie sesji
 - pozostawienie ręcznie podanych cookie wyłącznie jako trybu awaryjnego
+- przekazywanie pełnego zestawu cookie z przeglądarki do `requests.Session`, aby zachować dostęp do stron wymagających dodatkowego stanu sesji
 
 ---
 
@@ -80,7 +81,7 @@ Architektura jest monolityczna i skryptowa. Cała logika znajduje się w jednym 
 - dane logowania do serwisu źródłowego są dostarczane przez zmienne środowiskowe
 - dla każdego użytkownika skrypt otwiera wskazany arkusz i zakładkę
 - przed pobieraniem stron aplikacja będzie weryfikować, czy ma ważną sesję do serwisu źródłowego
-- jeśli sesja będzie nieważna, komponent Playwright wykona logowanie i zasili `requests.Session` aktualnymi cookie
+- jeśli sesja będzie nieważna, komponent Playwright wykona logowanie i zasili `requests.Session` pełnym zestawem aktualnych cookie z kontekstu przeglądarki
 - z arkusza pobierane są wszystkie wiersze i mapowane do modelu `SeriesRow`
 - dla każdego aktywnego serialu wykonywane jest żądanie HTTP do strony odcinków
 - HTML jest parsowany do wyniku `EpisodeCheckResult`
@@ -110,7 +111,8 @@ Obecne ograniczenie architektoniczne:
 - `find_episodes()` i `extract_episode_number()`: wydobywanie informacji o odcinkach z HTML
 - `process_user()`: główna orkiestracja przepływu dla pojedynczego użytkownika
 - `build_email_html()` i `send_email()`: generowanie i wysyłka raportu HTML
-- moduł logowania Playwright: uzyskanie cookie sesyjnych po zalogowaniu i przekazanie ich do sesji HTTP
+- moduł logowania Playwright: uzyskanie cookie po zalogowaniu i przekazanie ich do sesji HTTP
+- moduł translacji sesji przeglądarki: przeniesienie pełnego zestawu cookie do klienta `requests`
 - mechanizm walidacji sesji: wykrycie utraty autoryzacji i wywołanie ponownego logowania
 
 Zewnętrzne zależności wykonawcze:
@@ -183,7 +185,7 @@ Zewnętrzne zależności wykonawcze:
    Uzasadnienie:
    Pozwala to ograniczyć zakres zmian i zachować obecną logikę pobierania oraz parsowania stron.
    Konsekwencje:
-   Potrzebne będzie jawne mapowanie cookie z kontekstu Playwright do sesji HTTP.
+   Potrzebne jest jawne mapowanie pełnego zestawu cookie z kontekstu Playwright do sesji HTTP, bo sam podzbiór cookie autoryzacyjnych nie wystarcza dla wszystkich stron.
 
 10. Decyzja (dotyczy PRD: `001-auto-cookie-login-prd.md`):
     Dane logowania do serwisu źródłowego mają być przechowywane w zmiennych środowiskowych, a ręczne cookie mogą pozostać wyłącznie jako tryb awaryjny.
@@ -225,6 +227,7 @@ Minimalne kryteria akceptacji dla bieżącej implementacji:
 Minimalne kryteria akceptacji dla rozszerzenia z PRD `001-auto-cookie-login-prd.md`:
 - dla poprawnych danych logowania aplikacja sama uzyskuje ważne cookie bez ręcznej ingerencji użytkownika
 - cookie pozyskane przez Playwright mogą zostać użyte przez istniejący klient `requests.Session`
+- pełny zestaw cookie z przeglądarki zachowuje dostęp także do stron wymagających dodatkowego stanu sesji, takich jak `City Hunter`
 - po wygaśnięciu sesji aplikacja potrafi ponowić logowanie automatycznie
 - błędy logowania są czytelnie raportowane i nie pozostają „ciche”
 

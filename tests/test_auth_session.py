@@ -47,6 +47,21 @@ class AuthSessionTests(unittest.TestCase):
             [cookie["name"] for cookie in filtered],
         )
 
+    def test_extract_browser_session_cookies_keeps_auxiliary_browser_state(self):
+        cookies = [
+            {"name": "wordpress_logged_in_test", "value": "def"},
+            {"name": "_lscache_vary", "value": "ghi"},
+            {"name": "wordpress_test_cookie", "value": "ok"},
+            {"name": "", "value": "ignored"},
+        ]
+
+        filtered = main.extract_browser_session_cookies(cookies)
+
+        self.assertEqual(
+            ["wordpress_logged_in_test", "_lscache_vary", "wordpress_test_cookie"],
+            [cookie["name"] for cookie in filtered],
+        )
+
     def test_response_requires_auth_detects_wordpress_login_form(self):
         response = FakeResponse(
             url="https://www.dramaqueen.pl/serial",

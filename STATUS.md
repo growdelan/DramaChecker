@@ -6,7 +6,7 @@
 - aktualizacja kolumn z odcinkami w arkuszu
 - wysyłka raportu e-mail HTML
 - automatyczne logowanie do DramaQueen przez Playwright
-- automatyczne pobranie cookie sesyjnych i przekazanie ich do `requests.Session`
+- automatyczne pobranie pełnego zestawu cookie przeglądarki i przekazanie ich do `requests.Session`
 - ponowne logowanie po wykryciu utraty autoryzacji
 
 ## Co jest skończone
@@ -32,3 +32,4 @@
 - dodano logowanie przez Playwright i automatyczne odświeżanie sesji
 - potwierdzono działanie na realnym logowaniu, odczycie arkusza `dramy` i wysyłce e-mail
 - dodano `users.example.json` oraz pozostawiono prawdziwy `users.json` poza repo
+- naprawiono przypadek `City Hunter` przez przekazywanie pełnego zestawu cookie z Playwright do `requests.Session`

@@ -211,8 +211,13 @@ class DramaQueenAuthenticator:
         auth_cookies = extract_auth_cookies(cookies)
         if not auth_cookies:
             raise RuntimeError("Po logowaniu nie znaleziono wymaganych cookie sesyjnych.")
-        apply_cookies_to_session(session, auth_cookies)
-        logger.info("Pobrano %d cookie sesyjnych po logowaniu.", len(auth_cookies))
+        browser_cookies = extract_browser_session_cookies(cookies)
+        apply_cookies_to_session(session, browser_cookies)
+        logger.info(
+            "Pobrano %d cookie po logowaniu, w tym %d sesyjnych.",
+            len(browser_cookies),
+            len(auth_cookies),
+        )
 
 
 def getenv_int(name: str, default: int) -> int:
@@ -382,6 +387,14 @@ def is_auth_cookie_name(name: str) -> bool:
 
 def extract_auth_cookies(cookies: List[dict]) -> List[dict]:
     return [cookie for cookie in cookies if is_auth_cookie_name(cookie.get("name", ""))]
+
+
+def extract_browser_session_cookies(cookies: List[dict]) -> List[dict]:
+    return [
+        cookie
+        for cookie in cookies
+        if cookie.get("name") and cookie.get("value") is not None
+    ]
 
 
 def apply_cookies_to_session(session: requests.Session, cookies: List[dict]) -> None:
