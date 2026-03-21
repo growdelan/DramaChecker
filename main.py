@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from jinja2 import Template
 import gspread
 from gspread.exceptions import APIError, SpreadsheetNotFound, WorksheetNotFound
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -26,6 +27,20 @@ EPISODE_ANY_RE = re.compile(r"Odcinek\s*(\d+)", re.IGNORECASE)
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
+DEFAULT_AUTH_DOMAIN = os.environ.get("DRAMAQUEEN_AUTH_DOMAIN", "www.dramaqueen.pl")
+DEFAULT_LOGIN_URL = os.environ.get(
+    "DRAMAQUEEN_LOGIN_URL", "https://www.dramaqueen.pl/wp-login.php"
+)
+DEFAULT_USERNAME_SELECTOR = os.environ.get(
+    "DRAMAQUEEN_LOGIN_USERNAME_SELECTOR", "input[name='log'], #user_login"
+)
+DEFAULT_PASSWORD_SELECTOR = os.environ.get(
+    "DRAMAQUEEN_LOGIN_PASSWORD_SELECTOR", "input[name='pwd'], #user_pass"
+)
+DEFAULT_SUBMIT_SELECTOR = os.environ.get(
+    "DRAMAQUEEN_LOGIN_SUBMIT_SELECTOR",
+    "button[type='submit'], input[type='submit'], #wp-submit",
 )
 
 COLUMN_ALIASES: Dict[str, List[str]] = {
@@ -133,11 +148,105 @@ class UserConfig:
     )
 
 
+@dataclass
+class AuthConfig:
+    username: Optional[str]
+    password: Optional[str]
+    login_url: str = DEFAULT_LOGIN_URL
+    auth_domain: str = DEFAULT_AUTH_DOMAIN
+    username_selector: str = DEFAULT_USERNAME_SELECTOR
+    password_selector: str = DEFAULT_PASSWORD_SELECTOR
+    submit_selector: str = DEFAULT_SUBMIT_SELECTOR
+    success_url_contains: Optional[str] = None
+    headless: bool = True
+    timeout_ms: int = 30000
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.username and self.password)
+
+
+class DramaQueenAuthenticator:
+    def __init__(self, config: AuthConfig):
+        self.config = config
+
+    def ensure_session(self, session: requests.Session, force: bool = False) -> None:
+        if not self.config.is_configured:
+            raise RuntimeError("Brak danych logowania do automatycznego logowania.")
+        if force or not has_auth_cookies(session):
+            self.login_into_session(session)
+
+    def login_into_session(self, session: requests.Session) -> None:
+        logger.info("Uruchamiam logowanie przez Playwright.")
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch(headless=self.config.headless)
+                context = browser.new_context(user_agent=DEFAULT_USER_AGENT)
+                page = context.new_page()
+                page.goto(
+                    self.config.login_url,
+                    wait_until="domcontentloaded",
+                    timeout=self.config.timeout_ms,
+                )
+                page.locator(self.config.username_selector).first.fill(
+                    self.config.username or ""
+                )
+                page.locator(self.config.password_selector).first.fill(
+                    self.config.password or ""
+                )
+                page.locator(self.config.submit_selector).first.click()
+                page.wait_for_load_state("networkidle", timeout=self.config.timeout_ms)
+                if self.config.success_url_contains:
+                    if self.config.success_url_contains not in page.url:
+                        raise RuntimeError(
+                            "Logowanie zakończyło się bez oczekiwanego przekierowania."
+                        )
+                cookies = context.cookies()
+                browser.close()
+        except PlaywrightTimeoutError as exc:
+            raise RuntimeError("Timeout podczas logowania przez Playwright.") from exc
+        except Exception as exc:
+            raise RuntimeError(f"Błąd logowania przez Playwright: {exc}") from exc
+
+        auth_cookies = extract_auth_cookies(cookies)
+        if not auth_cookies:
+            raise RuntimeError("Po logowaniu nie znaleziono wymaganych cookie sesyjnych.")
+        browser_cookies = extract_browser_session_cookies(cookies)
+        apply_cookies_to_session(session, browser_cookies)
+        logger.info(
+            "Pobrano %d cookie po logowaniu, w tym %d sesyjnych.",
+            len(browser_cookies),
+            len(auth_cookies),
+        )
+
+
 def getenv_int(name: str, default: int) -> int:
     try:
         return int(os.environ.get(name, str(default)))
     except Exception:
         return default
+
+
+def build_auth_config() -> AuthConfig:
+    return AuthConfig(
+        username=os.environ.get("DRAMAQUEEN_USERNAME"),
+        password=os.environ.get("DRAMAQUEEN_PASSWORD"),
+        login_url=os.environ.get("DRAMAQUEEN_LOGIN_URL", DEFAULT_LOGIN_URL),
+        auth_domain=os.environ.get("DRAMAQUEEN_AUTH_DOMAIN", DEFAULT_AUTH_DOMAIN),
+        username_selector=os.environ.get(
+            "DRAMAQUEEN_LOGIN_USERNAME_SELECTOR", DEFAULT_USERNAME_SELECTOR
+        ),
+        password_selector=os.environ.get(
+            "DRAMAQUEEN_LOGIN_PASSWORD_SELECTOR", DEFAULT_PASSWORD_SELECTOR
+        ),
+        submit_selector=os.environ.get(
+            "DRAMAQUEEN_LOGIN_SUBMIT_SELECTOR", DEFAULT_SUBMIT_SELECTOR
+        ),
+        success_url_contains=os.environ.get("DRAMAQUEEN_LOGIN_SUCCESS_URL_CONTAINS"),
+        headless=os.environ.get("DRAMAQUEEN_LOGIN_HEADLESS", "1")
+        not in ("0", "false", "False", "no", "nie"),
+        timeout_ms=getenv_int("DRAMAQUEEN_LOGIN_TIMEOUT_MS", 30000),
+    )
 
 
 def parse_int(value: object, default: int = 0) -> int:
@@ -271,6 +380,41 @@ def update_cell(ws, row_idx: int, col_idx: int, value: object):
     ws.update_cell(row_idx, col_idx, value)
 
 
+def is_auth_cookie_name(name: str) -> bool:
+    normalized = (name or "").lower()
+    return normalized == "phpsessid" or normalized.startswith("wordpress_logged_in") or normalized.startswith("wordpress_sec")
+
+
+def extract_auth_cookies(cookies: List[dict]) -> List[dict]:
+    return [cookie for cookie in cookies if is_auth_cookie_name(cookie.get("name", ""))]
+
+
+def extract_browser_session_cookies(cookies: List[dict]) -> List[dict]:
+    return [
+        cookie
+        for cookie in cookies
+        if cookie.get("name") and cookie.get("value") is not None
+    ]
+
+
+def apply_cookies_to_session(session: requests.Session, cookies: List[dict]) -> None:
+    for cookie in cookies:
+        name = cookie.get("name")
+        value = cookie.get("value")
+        if not name or value is None:
+            continue
+        session.cookies.set(
+            name,
+            value,
+            domain=cookie.get("domain") or DEFAULT_AUTH_DOMAIN,
+            path=cookie.get("path") or "/",
+        )
+
+
+def has_auth_cookies(session: requests.Session) -> bool:
+    return any(is_auth_cookie_name(cookie.name) for cookie in session.cookies)
+
+
 def build_requests_session() -> requests.Session:
     s = requests.Session()
     s.headers.update({"User-Agent": DEFAULT_USER_AGENT})
@@ -288,9 +432,47 @@ def build_requests_session() -> requests.Session:
     return s
 
 
-def check_series(session: requests.Session, series: SeriesRow) -> EpisodeCheckResult:
+def response_requires_auth(resp: requests.Response) -> bool:
+    if resp.status_code in (401, 403):
+        return True
+    url = (resp.url or "").lower()
+    if "wp-login.php" in url:
+        return True
+    text = (resp.text or "").lower()
+    markers = [
+        'name="log"',
+        "name='log'",
+        'id="user_login"',
+        'name="pwd"',
+        "name='pwd'",
+        'id="user_pass"',
+        "wp-submit",
+    ]
+    return sum(marker in text for marker in markers) >= 2
+
+
+def check_series(
+    session: requests.Session,
+    series: SeriesRow,
+    authenticator: Optional[DramaQueenAuthenticator] = None,
+) -> EpisodeCheckResult:
     try:
         resp = session.get(series.link, timeout=60)
+        if response_requires_auth(resp):
+            if authenticator is None:
+                return EpisodeCheckResult(
+                    None,
+                    None,
+                    error=f"{series.nazwa}: sesja wygasła, brak skonfigurowanego automatycznego logowania",
+                )
+            authenticator.ensure_session(session, force=True)
+            resp = session.get(series.link, timeout=60)
+            if response_requires_auth(resp):
+                return EpisodeCheckResult(
+                    None,
+                    None,
+                    error=f"{series.nazwa}: nie udało się odzyskać zalogowanej sesji",
+                )
         if resp.status_code != 200:
             return EpisodeCheckResult(
                 None, None, error=f"{series.nazwa}: HTTP {resp.status_code}"
@@ -365,7 +547,11 @@ def load_user_configs() -> List[UserConfig]:
     ]
 
 
-def process_user(cfg: UserConfig, session: requests.Session) -> int:
+def process_user(
+    cfg: UserConfig,
+    session: requests.Session,
+    authenticator: Optional[DramaQueenAuthenticator] = None,
+) -> int:
     try:
         gc = authenticate_gspread(cfg.service_account_file)
         sh, ws = open_sheet(gc, cfg.sheet_title, cfg.worksheet_title)
@@ -392,7 +578,7 @@ def process_user(cfg: UserConfig, session: requests.Session) -> int:
         if not s.link:
             problems.append(f"{s.nazwa}: brak linku w arkuszu")
             continue
-        result = check_series(session, s)
+        result = check_series(session, s, authenticator)
         if result.error:
             problems.append(result.error)
             continue
@@ -445,10 +631,12 @@ def process_user(cfg: UserConfig, session: requests.Session) -> int:
 def main() -> int:
     load_dotenv()
     session = build_requests_session()
+    auth_config = build_auth_config()
+    authenticator = DramaQueenAuthenticator(auth_config) if auth_config.is_configured else None
     configs = load_user_configs()
     exit_code = 0
     for cfg in configs:
-        exit_code = max(exit_code, process_user(cfg, session))
+        exit_code = max(exit_code, process_user(cfg, session, authenticator))
     logger.info("Zakończono.")
     return exit_code
 
