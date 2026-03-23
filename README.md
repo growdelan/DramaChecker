@@ -4,6 +4,7 @@ Skrypt sprawdzający nowe odcinki K-dram w arkuszu Google Sheets i wysyłający 
 
 Obsługuje automatyczne logowanie do DramaQueen przez Playwright, więc nie trzeba już ręcznie odnawiać cookie w `.env`.
 Po zalogowaniu przenosi do `requests.Session` pełny zestaw cookie z przeglądarki, co jest potrzebne dla części stron takich jak `City Hunter`.
+Dla chwilowych problemów logowania działa retry odzyskania sesji (2 próby), żeby ograniczyć losowe błędy pojedynczych seriali.
 
 ## Uruchamianie
 

@@ -32,6 +32,19 @@ class FakeAuthenticator:
         session.cookies.set("wordpress_logged_in_test", "ok", domain="www.dramaqueen.pl")
 
 
+class FlakyAuthenticator:
+    def __init__(self, fail_attempts=1, message="Po logowaniu nie znaleziono wymaganych cookie sesyjnych."):
+        self.calls = 0
+        self.fail_attempts = fail_attempts
+        self.message = message
+
+    def ensure_session(self, session, force=False):
+        self.calls += 1
+        if self.calls <= self.fail_attempts:
+            raise RuntimeError(self.message)
+        session.cookies.set("wordpress_logged_in_test", "ok", domain="www.dramaqueen.pl")
+
+
 class AuthSessionTests(unittest.TestCase):
     def test_extract_auth_cookies_filters_only_session_cookies(self):
         cookies = [
@@ -125,6 +138,80 @@ class AuthSessionTests(unittest.TestCase):
         result = main.check_series(session, series)
 
         self.assertIn("brak skonfigurowanego automatycznego logowania", result.error or "")
+
+    def test_check_series_retries_auth_recovery_after_transient_failure(self):
+        login_page = FakeResponse(
+            url="https://www.dramaqueen.pl/wp-login.php?redirect_to=%2Fserial",
+            text='<input id="user_login" name="log"><input id="user_pass" name="pwd"><input id="wp-submit">',
+        )
+        episode_page = FakeResponse(
+            text="""
+            <p class="toggler">Odcinek 9</p>
+            <p class="toggler"><img src="locked.png">Odcinek 10</p>
+            """,
+        )
+        session = FakeSession([login_page, episode_page])
+        authenticator = FlakyAuthenticator(fail_attempts=1)
+        series = main.SeriesRow(
+            row_idx=2,
+            nazwa="City Hunter",
+            link="https://www.dramaqueen.pl/city-hunter",
+            obejrzany_odcinek=7,
+            odcinek_na_stronie=7,
+            liczba_odcinków=20,
+        )
+
+        result = main.check_series(session, series, authenticator)
+
+        self.assertIsNone(result.error)
+        self.assertEqual(9, result.latest_ready)
+        self.assertEqual(10, result.max_found)
+        self.assertEqual(2, authenticator.calls)
+
+    def test_check_series_returns_error_after_exhausted_auth_retries(self):
+        login_page = FakeResponse(
+            url="https://www.dramaqueen.pl/wp-login.php?redirect_to=%2Fserial",
+            text='<input id="user_login" name="log"><input id="user_pass" name="pwd"><input id="wp-submit">',
+        )
+        session = FakeSession([login_page])
+        authenticator = FlakyAuthenticator(fail_attempts=5)
+        series = main.SeriesRow(
+            row_idx=2,
+            nazwa="City Hunter",
+            link="https://www.dramaqueen.pl/city-hunter",
+            obejrzany_odcinek=7,
+            odcinek_na_stronie=7,
+            liczba_odcinków=20,
+        )
+
+        result = main.check_series(session, series, authenticator)
+
+        self.assertIsNotNone(result.error)
+        self.assertIn("błąd pobierania", result.error or "")
+        self.assertIn("Po logowaniu nie znaleziono wymaganych cookie sesyjnych", result.error or "")
+        self.assertEqual(main.AUTH_RECOVERY_MAX_ATTEMPTS, authenticator.calls)
+
+    def test_check_series_returns_auth_recovery_error_when_page_still_requires_auth(self):
+        login_page = FakeResponse(
+            url="https://www.dramaqueen.pl/wp-login.php?redirect_to=%2Fserial",
+            text='<input id="user_login" name="log"><input id="user_pass" name="pwd"><input id="wp-submit">',
+        )
+        session = FakeSession([login_page, login_page, login_page])
+        authenticator = FakeAuthenticator()
+        series = main.SeriesRow(
+            row_idx=2,
+            nazwa="City Hunter",
+            link="https://www.dramaqueen.pl/city-hunter",
+            obejrzany_odcinek=7,
+            odcinek_na_stronie=7,
+            liczba_odcinków=20,
+        )
+
+        result = main.check_series(session, series, authenticator)
+
+        self.assertIsNotNone(result.error)
+        self.assertIn("nie udało się odzyskać zalogowanej sesji", result.error or "")
+        self.assertEqual(main.AUTH_RECOVERY_MAX_ATTEMPTS, authenticator.calls)
 
 
 if __name__ == "__main__":
