@@ -83,3 +83,28 @@ Uwagi:
 - milestone zależny od realizacji Milestone 1.0
 - README uzupełnione o konfigurację i uruchamianie Playwright
 - istnieją testy jednostkowe oraz smoke test `process_user()` bez realnego IO
+
+---
+
+## Milestone 1.2: Retry odzyskania sesji dla chwilowych błędów logowania (done)
+
+Cel:
+- ograniczyć losowe błędy typu `Po logowaniu nie znaleziono wymaganych cookie sesyjnych`
+- zapewnić ponowienie sprawdzenia serialu po chwilowej awarii odzyskania sesji
+
+Definition of Done:
+- dla chwilowego błędu logowania/cookie aplikacja wykonuje dodatkową próbę odzyskania sesji
+- po udanym retry aplikacja ponawia pobranie strony tego samego serialu
+- po wyczerpaniu limitu prób aplikacja zwraca czytelny błąd końcowy
+- istnieją testy `unittest` dla scenariusza: pierwsza próba nieudana, druga udana
+
+Zakres:
+- dodanie kontrolowanego retry w ścieżce odzyskiwania sesji
+- ponowienie sprawdzenia tego samego serialu po udanym odzyskaniu sesji
+- dodanie logów diagnostycznych z numerem próby
+- rozszerzenie testów jednostkowych o scenariusze retry
+
+Uwagi:
+- zakres wynika z `prd/002-auth-retry-for-first-series-prd.md`
+- poza zakresem: trwały cache cookie między uruchomieniami
+- wdrożono retry odzyskania sesji z limitem prób oraz testy `unittest` dla scenariuszy błędów przejściowych i wyczerpania retry

@@ -42,6 +42,7 @@ DEFAULT_SUBMIT_SELECTOR = os.environ.get(
     "DRAMAQUEEN_LOGIN_SUBMIT_SELECTOR",
     "button[type='submit'], input[type='submit'], #wp-submit",
 )
+AUTH_RECOVERY_MAX_ATTEMPTS = 2
 
 COLUMN_ALIASES: Dict[str, List[str]] = {
     "nazwa": ["nazwa", "tytuł", "tytul"],
@@ -465,9 +466,46 @@ def check_series(
                     None,
                     error=f"{series.nazwa}: sesja wygasła, brak skonfigurowanego automatycznego logowania",
                 )
-            authenticator.ensure_session(session, force=True)
-            resp = session.get(series.link, timeout=60)
-            if response_requires_auth(resp):
+            recovered = False
+            last_auth_error: Optional[Exception] = None
+            for attempt in range(1, AUTH_RECOVERY_MAX_ATTEMPTS + 1):
+                logger.warning(
+                    "%s: próba odzyskania sesji %d/%d",
+                    series.nazwa,
+                    attempt,
+                    AUTH_RECOVERY_MAX_ATTEMPTS,
+                )
+                try:
+                    authenticator.ensure_session(session, force=True)
+                    last_auth_error = None
+                except Exception as auth_exc:
+                    last_auth_error = auth_exc
+                    logger.warning(
+                        "%s: nieudana próba odzyskania sesji %d/%d: %s",
+                        series.nazwa,
+                        attempt,
+                        AUTH_RECOVERY_MAX_ATTEMPTS,
+                        auth_exc,
+                    )
+                    continue
+
+                resp = session.get(series.link, timeout=60)
+                if not response_requires_auth(resp):
+                    recovered = True
+                    break
+
+                logger.warning(
+                    "%s: po próbie odzyskania sesji %d/%d strona nadal wymaga logowania",
+                    series.nazwa,
+                    attempt,
+                    AUTH_RECOVERY_MAX_ATTEMPTS,
+                )
+
+            if not recovered:
+                if last_auth_error is not None:
+                    return EpisodeCheckResult(
+                        None, None, error=f"{series.nazwa}: błąd pobierania: {last_auth_error}"
+                    )
                 return EpisodeCheckResult(
                     None,
                     None,

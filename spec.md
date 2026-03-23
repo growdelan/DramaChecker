@@ -24,6 +24,11 @@ Wdrożone rozszerzenie zakresu (PRD `001-auto-cookie-login-prd.md`):
 - samodzielne pobieranie i odświeżanie cookie sesyjnych
 - przekazanie aktualnych cookie do istniejącego przepływu opartego na `requests.Session`
 
+Wdrożone rozszerzenie zakresu (PRD `002-auth-retry-for-first-series-prd.md`):
+- kontrolowane retry odzyskania sesji po chwilowym błędzie logowania/cookie
+- ponowienie sprawdzenia tego samego serialu po udanym odzyskaniu sesji
+- ograniczony limit prób i czytelne logowanie numeru próby
+
 Poza zakresem:
 - interfejs WWW, CLI z parserem argumentów lub panel administracyjny
 - trwała baza danych poza Google Sheets
@@ -54,13 +59,17 @@ Aplikacja obecnie nie robi:
 - nie zapisuje historii zmian ani audytu operacji
 - nie rozróżnia typów błędów na poziomie retry/backoff/circuit breaker
 - nie waliduje konfiguracji w sposób formalny przed startem
-- nie posiada testów automatycznych ani warstwy stubów/fake’ów dla smoke testów
 
 Wdrożone rozszerzenie wynikające z PRD `001-auto-cookie-login-prd.md`:
 - automatyczne logowanie przez rzeczywistą przeglądarkę sterowaną Playwright
 - wykrywanie utraty autoryzacji i automatyczne odświeżanie sesji
 - pozostawienie ręcznie podanych cookie wyłącznie jako trybu awaryjnego
 - przekazywanie pełnego zestawu cookie z przeglądarki do `requests.Session`, aby zachować dostęp do stron wymagających dodatkowego stanu sesji
+
+Wdrożone rozszerzenie wynikające z PRD `002-auth-retry-for-first-series-prd.md`:
+- dodatkowa próba odzyskania sesji dla chwilowych błędów logowania/cookie
+- ponowienie pobrania strony tego samego serialu po udanym retry
+- zakończenie błędem dopiero po wyczerpaniu limitu prób
 
 ---
 
@@ -82,6 +91,7 @@ Architektura jest monolityczna i skryptowa. Cała logika znajduje się w jednym 
 - dla każdego użytkownika skrypt otwiera wskazany arkusz i zakładkę
 - przed pobieraniem stron aplikacja będzie weryfikować, czy ma ważną sesję do serwisu źródłowego
 - jeśli sesja będzie nieważna, komponent Playwright wykona logowanie i zasili `requests.Session` pełnym zestawem aktualnych cookie z kontekstu przeglądarki
+- dla błędów odzyskiwania sesji aplikacja wykonuje ograniczony retry, zanim zgłosi błąd końcowy (wdrożone w PRD `002-auth-retry-for-first-series-prd.md`)
 - z arkusza pobierane są wszystkie wiersze i mapowane do modelu `SeriesRow`
 - dla każdego aktywnego serialu wykonywane jest żądanie HTTP do strony odcinków
 - HTML jest parsowany do wyniku `EpisodeCheckResult`
@@ -114,6 +124,7 @@ Obecne ograniczenie architektoniczne:
 - moduł logowania Playwright: uzyskanie cookie po zalogowaniu i przekazanie ich do sesji HTTP
 - moduł translacji sesji przeglądarki: przeniesienie pełnego zestawu cookie do klienta `requests`
 - mechanizm walidacji sesji: wykrycie utraty autoryzacji i wywołanie ponownego logowania
+- mechanizm retry autoryzacji: ponowna próba odzyskania sesji i ponowienie sprawdzenia tego samego serialu po chwilowej awarii logowania/cookie
 
 Zewnętrzne zależności wykonawcze:
 - Google Sheets API przez konto serwisowe
@@ -201,6 +212,13 @@ Zewnętrzne zależności wykonawcze:
     Konsekwencje:
     Jeśli serwis wymusi dodatkowe kroki uwierzytelnienia, konieczna będzie osobna decyzja produktowa i techniczna.
 
+12. Decyzja (dotyczy PRD: `002-auth-retry-for-first-series-prd.md`):
+    Wprowadzono ograniczony retry odzyskania sesji oraz ponowienie pobrania strony tego samego serialu po chwilowym błędzie logowania/cookie.
+    Uzasadnienie:
+    Obserwowane błędy mają charakter nieregularny, a pojedyncza nieudana próba logowania może fałszywie oznaczyć pierwszy serial na liście jako niedostępny.
+    Konsekwencje:
+    Czas pojedynczego przebiegu może wzrosnąć o czas dodatkowej próby, ale liczba fałszywych błędów dla pojedynczych seriali powinna spaść.
+
 ---
 
 ## Jakość i kryteria akceptacji
@@ -212,8 +230,6 @@ Wymagania jakościowe dla aktualnego stanu projektu:
 - logowanie automatyczne odzyskuje sesję bez ręcznej aktualizacji cookie przez użytkownika
 
 Luki jakościowe wymagające domknięcia w kolejnych pracach:
-- brak testów `unittest`, mimo że są wymagane operacyjnie w `AGENTS.md`
-- brak smoke testów bez IO
 - brak formalnej walidacji konfiguracji wejściowej
 - brak pełnej dokumentacji wszystkich wymaganych zmiennych środowiskowych w `README.md`
 - brak smoke testu dla pełnego przebiegu z nowym mechanizmem sesji
@@ -230,6 +246,12 @@ Minimalne kryteria akceptacji dla rozszerzenia z PRD `001-auto-cookie-login-prd.
 - pełny zestaw cookie z przeglądarki zachowuje dostęp także do stron wymagających dodatkowego stanu sesji, takich jak `City Hunter`
 - po wygaśnięciu sesji aplikacja potrafi ponowić logowanie automatycznie
 - błędy logowania są czytelnie raportowane i nie pozostają „ciche”
+
+Minimalne kryteria akceptacji dla rozszerzenia z PRD `002-auth-retry-for-first-series-prd.md`:
+- przy chwilowym błędzie odzyskania sesji aplikacja wykonuje dodatkową próbę logowania zamiast kończyć od razu błędem
+- po udanym retry aplikacja ponawia sprawdzenie tego samego serialu i zwraca wynik bez błędu technicznego
+- po wyczerpaniu limitu retry aplikacja raportuje błąd końcowy w sposób czytelny
+- testy `unittest` obejmują scenariusz: pierwsza próba nieudana, druga udana
 
 ---
 
@@ -249,10 +271,11 @@ Minimalne kryteria akceptacji dla rozszerzenia z PRD `001-auto-cookie-login-prd.
 - Najbliższym zadaniem porządkującym powinno być urealnienie `ROADMAP.md` i `STATUS.md` względem obecnego kodu.
 - Ta specyfikacja opisuje stan bieżącej implementacji, a nie docelowy, pełny plan rozwoju.
 - PRD `001-auto-cookie-login-prd.md` został zrealizowany dla Milestone 1.0 i wprowadził automatyczne logowanie oraz odświeżanie sesji przez Playwright.
+- PRD `002-auth-retry-for-first-series-prd.md` został zrealizowany i dodał odporność na chwilowe błędy logowania przez kontrolowane retry oraz ponowienie sprawdzenia serialu.
 
 ---
 
 ## Status specyfikacji
 - Data utworzenia: 2026-03-21
-- Ostatnia aktualizacja: 2026-03-21
-- Aktualny zakres obowiązywania: bieżąca implementacja skryptu `main.py`, konfiguracja z `pyproject.toml`, opis projektu z `README.md` oraz wdrożone logowanie Playwright z PRD `001-auto-cookie-login-prd.md`
+- Ostatnia aktualizacja: 2026-03-23
+- Aktualny zakres obowiązywania: bieżąca implementacja skryptu `main.py`, konfiguracja z `pyproject.toml`, opis projektu z `README.md`, wdrożone logowanie Playwright z PRD `001-auto-cookie-login-prd.md` oraz wdrożone retry autoryzacji z PRD `002-auth-retry-for-first-series-prd.md`

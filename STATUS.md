@@ -8,13 +8,17 @@
 - automatyczne logowanie do DramaQueen przez Playwright
 - automatyczne pobranie pełnego zestawu cookie przeglądarki i przekazanie ich do `requests.Session`
 - ponowne logowanie po wykryciu utraty autoryzacji
+- retry odzyskania sesji dla chwilowych błędów logowania/cookie
+- ponowienie sprawdzenia tego samego serialu po udanym odzyskaniu sesji
 
 ## Co jest skończone
 - Milestone 0.5
 - Milestone 1.0
 - Milestone 1.1
+- Milestone 1.2
 - PRD dla automatycznego logowania: `prd/001-auto-cookie-login-prd.md`
-- testy jednostkowe dla logiki sesji i retry logowania
+- PRD retry autoryzacji: `prd/002-auth-retry-for-first-series-prd.md`
+- testy jednostkowe dla logiki sesji, retry logowania i scenariuszy wyczerpania retry
 - smoke test głównego przepływu `process_user()` bez realnego IO
 
 ## Co jest w trakcie
@@ -36,3 +40,7 @@
 - dodano `users.example.json` oraz pozostawiono prawdziwy `users.json` poza repo
 - naprawiono przypadek `City Hunter` przez przekazywanie pełnego zestawu cookie z Playwright do `requests.Session`
 - dodano smoke test `process_user()` oraz domknięto README dla Milestone 1.1
+- wdrożono retry odzyskania sesji (2 próby) w ścieżce sprawdzania serialu
+- dodano testy `unittest` dla scenariusza: pierwsza próba logowania nieudana, druga udana
+- dodano test `unittest` dla scenariusza: sesja nadal wymaga logowania po wyczerpaniu retry
+- potwierdzono poprawny realny przebieg `uv run python main.py` z odzyskaniem sesji i wysyłką e-mail
