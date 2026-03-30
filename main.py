@@ -22,7 +22,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-EPISODE_ANY_RE = re.compile(r"Odcinek\s*(\d+)", re.IGNORECASE)
+EPISODE_LABEL_RE = re.compile(r"^Odcinek\s+(\d+)$", re.IGNORECASE)
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -276,7 +276,7 @@ def build_email_html(new_items: List[dict], problems: List[str]) -> str:
 
 
 def extract_episode_number(text: str) -> Optional[int]:
-    m = EPISODE_ANY_RE.search(text)
+    m = EPISODE_LABEL_RE.fullmatch((text or "").strip())
     if m:
         try:
             return int(m.group(1))
