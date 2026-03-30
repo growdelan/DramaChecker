@@ -29,6 +29,11 @@ Wdrożone rozszerzenie zakresu (PRD `002-auth-retry-for-first-series-prd.md`):
 - ponowienie sprawdzenia tego samego serialu po udanym odzyskaniu sesji
 - ograniczony limit prób i czytelne logowanie numeru próby
 
+Wdrożone rozszerzenie zakresu (PRD `003-strict-episode-label-parsing-prd.md`):
+- ścisłe wykrywanie wyłącznie etykiet dokładnie równych `Odcinek <numer>`
+- odrzucanie etykiet z dodatkowymi opisami, takimi jak `Premiera w Korei: ...`
+- ograniczenie fałszywych wykryć odcinków jeszcze niedostępnych do oglądania
+
 Poza zakresem:
 - interfejs WWW, CLI z parserem argumentów lub panel administracyjny
 - trwała baza danych poza Google Sheets
@@ -70,6 +75,10 @@ Wdrożone rozszerzenie wynikające z PRD `002-auth-retry-for-first-series-prd.md
 - dodatkowa próba odzyskania sesji dla chwilowych błędów logowania/cookie
 - ponowienie pobrania strony tego samego serialu po udanym retry
 - zakończenie błędem dopiero po wyczerpaniu limitu prób
+
+Wdrożone rozszerzenie wynikające z PRD `003-strict-episode-label-parsing-prd.md`:
+- parser ma uznawać za istniejący odcinek tylko taki element HTML, którego pełny tekst po normalizacji jest dokładnie równy `Odcinek <numer>`
+- elementy zawierające dodatkowy opis, nawet jeśli zawierają numer odcinka, nie mają wpływać na `latest_ready` ani `max_found`
 
 ---
 
@@ -125,6 +134,7 @@ Obecne ograniczenie architektoniczne:
 - moduł translacji sesji przeglądarki: przeniesienie pełnego zestawu cookie do klienta `requests`
 - mechanizm walidacji sesji: wykrycie utraty autoryzacji i wywołanie ponownego logowania
 - mechanizm retry autoryzacji: ponowna próba odzyskania sesji i ponowienie sprawdzenia tego samego serialu po chwilowej awarii logowania/cookie
+- parser odcinków: pełne dopasowanie całego labela zamiast częściowego wykrywania numeru
 
 Zewnętrzne zależności wykonawcze:
 - Google Sheets API przez konto serwisowe
@@ -218,6 +228,13 @@ Zewnętrzne zależności wykonawcze:
     Obserwowane błędy mają charakter nieregularny, a pojedyncza nieudana próba logowania może fałszywie oznaczyć pierwszy serial na liście jako niedostępny.
     Konsekwencje:
     Czas pojedynczego przebiegu może wzrosnąć o czas dodatkowej próby, ale liczba fałszywych błędów dla pojedynczych seriali powinna spaść.
+
+13. Decyzja (dotyczy PRD: `003-strict-episode-label-parsing-prd.md`):
+    Parser odcinków ma uznawać za istniejące wyłącznie etykiety dokładnie równe `Odcinek <numer>`, po normalizacji tekstu elementu HTML.
+    Uzasadnienie:
+    Częściowe dopasowanie do wzorca `Odcinek <numer>` powoduje fałszywe wykrycia dla etykiet informacyjnych, takich jak `Odcinek 6 Premiera w Korei: 31.03.2026`.
+    Konsekwencje:
+    Parser stanie się bardziej restrykcyjny i może pominąć odcinki, jeśli serwis zacznie dopisywać dodatkowy tekst także przy realnie dostępnych odcinkach, ale ograniczy błędne aktualizacje arkusza i fałszywe powiadomienia.
 
 ---
 

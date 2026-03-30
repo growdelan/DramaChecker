@@ -46,6 +46,39 @@ class FlakyAuthenticator:
 
 
 class AuthSessionTests(unittest.TestCase):
+    def test_extract_episode_number_accepts_only_exact_episode_label(self):
+        self.assertEqual(6, main.extract_episode_number("Odcinek 6"))
+        self.assertEqual(6, main.extract_episode_number("  Odcinek 6  "))
+        self.assertIsNone(
+            main.extract_episode_number("Odcinek 6 Premiera w Korei: 31.03.2026")
+        )
+        self.assertIsNone(main.extract_episode_number("Odcinek 6 - wkrótce"))
+
+    def test_find_episodes_ignores_labels_with_additional_description(self):
+        html = """
+        <p class="toggler">Odcinek 5</p>
+        <p class="toggler">Odcinek 6 Premiera w Korei: 31.03.2026</p>
+        <p class="toggler"><img src="locked.png">Odcinek 7</p>
+        """
+
+        result = main.find_episodes(html)
+
+        self.assertIsNone(result.error)
+        self.assertEqual(5, result.latest_ready)
+        self.assertEqual(7, result.max_found)
+
+    def test_find_episodes_returns_error_when_only_descriptive_labels_exist(self):
+        html = """
+        <p class="toggler">Odcinek 6 Premiera w Korei: 31.03.2026</p>
+        <p class="toggler">Premiera w Korei: 31.03.2026</p>
+        """
+
+        result = main.find_episodes(html)
+
+        self.assertEqual("Nie znaleziono nagłówków odcinków.", result.error)
+        self.assertIsNone(result.latest_ready)
+        self.assertIsNone(result.max_found)
+
     def test_extract_auth_cookies_filters_only_session_cookies(self):
         cookies = [
             {"name": "PHPSESSID", "value": "abc"},

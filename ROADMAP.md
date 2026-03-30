@@ -108,3 +108,27 @@ Uwagi:
 - zakres wynika z `prd/002-auth-retry-for-first-series-prd.md`
 - poza zakresem: trwały cache cookie między uruchomieniami
 - wdrożono retry odzyskania sesji z limitem prób oraz testy `unittest` dla scenariuszy błędów przejściowych i wyczerpania retry
+
+---
+
+## Milestone 1.3: Ścisłe wykrywanie odcinków bez dodatkowych opisów (done)
+
+Cel:
+- wyeliminować fałszywe wykrycia odcinków dla etykiet zawierających dodatkowy opis, takich jak `Premiera w Korei: ...`
+- uznawać za istniejące wyłącznie odcinki oznaczone dokładnie jako `Odcinek <numer>`
+
+Definition of Done:
+- parser uznaje za odcinek tylko element, którego pełny tekst po normalizacji jest dokładnie równy `Odcinek <numer>`
+- etykiety z dodatkowymi dopiskami nie wpływają ani na `latest_ready`, ani na `max_found`
+- istnieją testy `unittest` dla scenariuszy z dodatkowymi opisami oraz scenariuszy mieszanych
+- brak regresji dla istniejących testów prostych etykiet i blokad z obrazkiem
+
+Zakres:
+- doprecyzowanie logiki parsowania etykiet odcinków
+- utrzymanie obecnego rozróżnienia między odcinkiem gotowym i zablokowanym przez obrazek
+- dodanie testów dla etykiet typu `Odcinek 6 Premiera w Korei: 31.03.2026`
+
+Uwagi:
+- zakres wynika z `prd/003-strict-episode-label-parsing-prd.md`
+- wdrożono ścisłe dopasowanie etykiet `Odcinek <numer>` oraz testy dla przypadków z dodatkowymi opisami
+- potwierdzony przypadek błędu dotyczył strony `Climax`, gdzie `Odcinek 6 Premiera w Korei: 31.03.2026` był błędnie liczony jako dostępny odcinek

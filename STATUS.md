@@ -10,21 +10,26 @@
 - ponowne logowanie po wykryciu utraty autoryzacji
 - retry odzyskania sesji dla chwilowych błędów logowania/cookie
 - ponowienie sprawdzenia tego samego serialu po udanym odzyskaniu sesji
+- ścisłe wykrywanie odcinków tylko dla etykiet dokładnie równych `Odcinek <numer>`
 
 ## Co jest skończone
 - Milestone 0.5
 - Milestone 1.0
 - Milestone 1.1
 - Milestone 1.2
+- Milestone 1.3
 - PRD dla automatycznego logowania: `prd/001-auto-cookie-login-prd.md`
 - PRD retry autoryzacji: `prd/002-auth-retry-for-first-series-prd.md`
+- PRD ścisłego parsowania etykiet odcinków: `prd/003-strict-episode-label-parsing-prd.md`
 - testy jednostkowe dla logiki sesji, retry logowania i scenariuszy wyczerpania retry
 - smoke test głównego przepływu `process_user()` bez realnego IO
+- testy jednostkowe i smoke test dla etykiet odcinków z dodatkowymi opisami
 
 ## Co jest w trakcie
 - brak aktywnego wdrożenia; bieżąca praca została domknięta na poziomie kodu i dokumentacji
 
 ## Co jest następne
+- brak zaplanowanych milestone'ów; kolejny zakres wymaga dopisania nowego PRD lub milestone'u
 - doprecyzowanie przykładowej konfiguracji użytkowników na bazie `users.example.json`
 - ewentualne wydzielenie logiki uwierzytelnienia z `main.py` bez zmiany zachowania
 - ewentualna obsługa CAPTCHA i 2FA jako osobny zakres prac
@@ -44,3 +49,5 @@
 - dodano testy `unittest` dla scenariusza: pierwsza próba logowania nieudana, druga udana
 - dodano test `unittest` dla scenariusza: sesja nadal wymaga logowania po wyczerpaniu retry
 - potwierdzono poprawny realny przebieg `uv run python main.py` z odzyskaniem sesji i wysyłką e-mail
+- wdrożono ścisłe parsowanie etykiet odcinków i ignorowanie dopisków typu `Premiera w Korei: ...`
+- dodano testy `unittest` i smoke test dla przypadku `Climax`, który wcześniej fałszywie wykrywał nowy odcinek
