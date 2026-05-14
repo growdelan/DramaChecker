@@ -22,7 +22,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-EPISODE_LABEL_RE = re.compile(r"^Odcinek\s+(\d+)$", re.IGNORECASE)
+EPISODE_LABEL_RE = re.compile(
+    r"^Odcinek\s+(\d+)(?:\s*[-–]\s*Finał)?$",
+    re.IGNORECASE,
+)
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
