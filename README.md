@@ -6,6 +6,7 @@ Obsługuje automatyczne logowanie do DramaQueen przez Playwright, więc nie trze
 Po zalogowaniu przenosi do `requests.Session` pełny zestaw cookie z przeglądarki, co jest potrzebne dla części stron takich jak `City Hunter`.
 Dla chwilowych problemów logowania działa retry odzyskania sesji (2 próby), żeby ograniczyć losowe błędy pojedynczych seriali.
 Parser odcinków liczy jako istniejące wyłącznie etykiety dokładnie równe `Odcinek <numer>`, więc dopiski informacyjne typu `Premiera w Korei: ...` nie powodują już fałszywych wykryć.
+Dopuszcza też polskie etykiety finałowe typu `Odcinek <numer> - Finał`, żeby ostatnie odcinki seriali były wykrywane bez ręcznej korekty arkusza.
 
 ## Uruchamianie
 

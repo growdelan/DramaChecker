@@ -34,6 +34,11 @@ Wdrożone rozszerzenie zakresu (PRD `003-strict-episode-label-parsing-prd.md`):
 - odrzucanie etykiet z dodatkowymi opisami, takimi jak `Premiera w Korei: ...`
 - ograniczenie fałszywych wykryć odcinków jeszcze niedostępnych do oglądania
 
+Wdrożone rozszerzenie zakresu (PRD `004-final-episode-label-parsing-prd.md`):
+- akceptowanie polskich etykiet finałowych `Odcinek <numer> - Finał`
+- utrzymanie odrzucania zwykłych dopisków informacyjnych
+- poprawne wykrywanie odblokowanych finałów jako dostępnych odcinków
+
 Poza zakresem:
 - interfejs WWW, CLI z parserem argumentów lub panel administracyjny
 - trwała baza danych poza Google Sheets
@@ -79,6 +84,11 @@ Wdrożone rozszerzenie wynikające z PRD `002-auth-retry-for-first-series-prd.md
 Wdrożone rozszerzenie wynikające z PRD `003-strict-episode-label-parsing-prd.md`:
 - parser ma uznawać za istniejący odcinek tylko taki element HTML, którego pełny tekst po normalizacji jest dokładnie równy `Odcinek <numer>`
 - elementy zawierające dodatkowy opis, nawet jeśli zawierają numer odcinka, nie mają wpływać na `latest_ready` ani `max_found`
+
+Wdrożone rozszerzenie wynikające z PRD `004-final-episode-label-parsing-prd.md`:
+- parser ma dodatkowo uznawać za istniejący odcinek polską etykietę finałową `Odcinek <numer> - Finał`
+- warianty spacji wokół myślnika i wielkości liter słowa `Finał` są akceptowane
+- inne dopiski po numerze odcinka nadal nie mają wpływać na `latest_ready` ani `max_found`
 
 ---
 
@@ -134,7 +144,7 @@ Obecne ograniczenie architektoniczne:
 - moduł translacji sesji przeglądarki: przeniesienie pełnego zestawu cookie do klienta `requests`
 - mechanizm walidacji sesji: wykrycie utraty autoryzacji i wywołanie ponownego logowania
 - mechanizm retry autoryzacji: ponowna próba odzyskania sesji i ponowienie sprawdzenia tego samego serialu po chwilowej awarii logowania/cookie
-- parser odcinków: pełne dopasowanie całego labela zamiast częściowego wykrywania numeru
+- parser odcinków: pełne dopasowanie całego labela z jawną obsługą polskiej etykiety finałowej
 
 Zewnętrzne zależności wykonawcze:
 - Google Sheets API przez konto serwisowe
@@ -236,6 +246,13 @@ Zewnętrzne zależności wykonawcze:
     Konsekwencje:
     Parser stanie się bardziej restrykcyjny i może pominąć odcinki, jeśli serwis zacznie dopisywać dodatkowy tekst także przy realnie dostępnych odcinkach, ale ograniczy błędne aktualizacje arkusza i fałszywe powiadomienia.
 
+14. Decyzja (dotyczy PRD: `004-final-episode-label-parsing-prd.md`):
+    Parser odcinków ma dopuścić polski sufiks finałowy `- Finał` jako bezpieczny wyjątek od ścisłej reguły `Odcinek <numer>`.
+    Uzasadnienie:
+    Serwis oznacza realnie dostępne finały formatem takim jak `Odcinek 10 - Finał`, co przy poprzedniej regule blokowało wykrycie ostatniego odcinka serialu `Climax`.
+    Konsekwencje:
+    Parser poprawnie wykrywa finały bez rozluźniania reguły na dowolne dopiski informacyjne, ale nadal może pominąć inne nieznane warianty etykiet.
+
 ---
 
 ## Jakość i kryteria akceptacji
@@ -270,6 +287,12 @@ Minimalne kryteria akceptacji dla rozszerzenia z PRD `002-auth-retry-for-first-s
 - po wyczerpaniu limitu retry aplikacja raportuje błąd końcowy w sposób czytelny
 - testy `unittest` obejmują scenariusz: pierwsza próba nieudana, druga udana
 
+Minimalne kryteria akceptacji dla rozszerzenia z PRD `004-final-episode-label-parsing-prd.md`:
+- etykieta `Odcinek <numer> - Finał` jest liczona jako odcinek
+- odblokowany finał podnosi `latest_ready`
+- zablokowany finał może podnosić tylko `max_found`
+- dopiski informacyjne typu `Premiera w Korei: ...` nadal są ignorowane
+
 ---
 
 ## Zasady zmian i ewolucji
@@ -289,10 +312,11 @@ Minimalne kryteria akceptacji dla rozszerzenia z PRD `002-auth-retry-for-first-s
 - Ta specyfikacja opisuje stan bieżącej implementacji, a nie docelowy, pełny plan rozwoju.
 - PRD `001-auto-cookie-login-prd.md` został zrealizowany dla Milestone 1.0 i wprowadził automatyczne logowanie oraz odświeżanie sesji przez Playwright.
 - PRD `002-auth-retry-for-first-series-prd.md` został zrealizowany i dodał odporność na chwilowe błędy logowania przez kontrolowane retry oraz ponowienie sprawdzenia serialu.
+- PRD `004-final-episode-label-parsing-prd.md` został zrealizowany i dodał obsługę polskich etykiet finałowych bez cofania ochrony przed dopiskami informacyjnymi.
 
 ---
 
 ## Status specyfikacji
 - Data utworzenia: 2026-03-21
-- Ostatnia aktualizacja: 2026-03-23
-- Aktualny zakres obowiązywania: bieżąca implementacja skryptu `main.py`, konfiguracja z `pyproject.toml`, opis projektu z `README.md`, wdrożone logowanie Playwright z PRD `001-auto-cookie-login-prd.md` oraz wdrożone retry autoryzacji z PRD `002-auth-retry-for-first-series-prd.md`
+- Ostatnia aktualizacja: 2026-05-14
+- Aktualny zakres obowiązywania: bieżąca implementacja skryptu `main.py`, konfiguracja z `pyproject.toml`, opis projektu z `README.md`, wdrożone logowanie Playwright z PRD `001-auto-cookie-login-prd.md`, wdrożone retry autoryzacji z PRD `002-auth-retry-for-first-series-prd.md`, ścisłe parsowanie etykiet z PRD `003-strict-episode-label-parsing-prd.md` oraz obsługa finałów z PRD `004-final-episode-label-parsing-prd.md`

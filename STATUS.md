@@ -11,6 +11,7 @@
 - retry odzyskania sesji dla chwilowych błędów logowania/cookie
 - ponowienie sprawdzenia tego samego serialu po udanym odzyskaniu sesji
 - ścisłe wykrywanie odcinków tylko dla etykiet dokładnie równych `Odcinek <numer>`
+- wykrywanie finałów oznaczonych jako `Odcinek <numer> - Finał`
 
 ## Co jest skończone
 - Milestone 0.5
@@ -18,12 +19,15 @@
 - Milestone 1.1
 - Milestone 1.2
 - Milestone 1.3
+- Milestone 1.4
 - PRD dla automatycznego logowania: `prd/001-auto-cookie-login-prd.md`
 - PRD retry autoryzacji: `prd/002-auth-retry-for-first-series-prd.md`
 - PRD ścisłego parsowania etykiet odcinków: `prd/003-strict-episode-label-parsing-prd.md`
+- PRD obsługi finałowych etykiet odcinków: `prd/004-final-episode-label-parsing-prd.md`
 - testy jednostkowe dla logiki sesji, retry logowania i scenariuszy wyczerpania retry
 - smoke test głównego przepływu `process_user()` bez realnego IO
 - testy jednostkowe i smoke test dla etykiet odcinków z dodatkowymi opisami
+- testy jednostkowe i smoke test dla etykiet finałowych na przykładzie `Climax`
 
 ## Co jest w trakcie
 - brak aktywnego wdrożenia; bieżąca praca została domknięta na poziomie kodu i dokumentacji
@@ -51,3 +55,5 @@
 - potwierdzono poprawny realny przebieg `uv run python main.py` z odzyskaniem sesji i wysyłką e-mail
 - wdrożono ścisłe parsowanie etykiet odcinków i ignorowanie dopisków typu `Premiera w Korei: ...`
 - dodano testy `unittest` i smoke test dla przypadku `Climax`, który wcześniej fałszywie wykrywał nowy odcinek
+- dodano PRD `004-final-episode-label-parsing-prd.md`
+- wdrożono obsługę etykiety `Odcinek 10 - Finał`, która wcześniej zatrzymywała `Climax` na odcinku 9

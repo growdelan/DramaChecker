@@ -132,3 +132,27 @@ Uwagi:
 - zakres wynika z `prd/003-strict-episode-label-parsing-prd.md`
 - wdrożono ścisłe dopasowanie etykiet `Odcinek <numer>` oraz testy dla przypadków z dodatkowymi opisami
 - potwierdzony przypadek błędu dotyczył strony `Climax`, gdzie `Odcinek 6 Premiera w Korei: 31.03.2026` był błędnie liczony jako dostępny odcinek
+
+---
+
+## Milestone 1.4: Obsługa finałowych etykiet odcinków (done)
+
+Cel:
+- wykrywać realnie dostępne finały oznaczone jako `Odcinek <numer> - Finał`
+- zachować ochronę przed fałszywymi wykryciami dopisków informacyjnych
+
+Definition of Done:
+- parser akceptuje `Odcinek <numer> - Finał` oraz warianty spacji i wielkości liter słowa `Finał`
+- parser nadal odrzuca etykiety typu `Odcinek <numer> Premiera w Korei: ...`
+- odblokowany finał podnosi `latest_ready`
+- finał z obrazkiem blokady nie podnosi `latest_ready`
+- istnieją testy `unittest` dla przypadku `Climax` i etykiet finałowych
+
+Zakres:
+- rozszerzenie regexu parsującego etykiety odcinków
+- dodanie testów jednostkowych dla wariantów finału
+- dodanie smoke testu procesu dla `Climax` z `Odcinek 10 - Finał`
+
+Uwagi:
+- zakres wynika z `prd/004-final-episode-label-parsing-prd.md`
+- poza zakresem: dowolne sufiksy po numerze odcinka oraz angielskie warianty `Final`/`Finale`

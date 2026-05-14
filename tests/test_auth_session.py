@@ -46,13 +46,18 @@ class FlakyAuthenticator:
 
 
 class AuthSessionTests(unittest.TestCase):
-    def test_extract_episode_number_accepts_only_exact_episode_label(self):
+    def test_extract_episode_number_accepts_exact_episode_and_final_label(self):
         self.assertEqual(6, main.extract_episode_number("Odcinek 6"))
         self.assertEqual(6, main.extract_episode_number("  Odcinek 6  "))
+        self.assertEqual(10, main.extract_episode_number("Odcinek 10 - Finał"))
+        self.assertEqual(10, main.extract_episode_number("Odcinek 10-Finał"))
+        self.assertEqual(10, main.extract_episode_number("Odcinek 10 - finał"))
+        self.assertEqual(10, main.extract_episode_number("Odcinek 10 - FINAŁ"))
         self.assertIsNone(
             main.extract_episode_number("Odcinek 6 Premiera w Korei: 31.03.2026")
         )
         self.assertIsNone(main.extract_episode_number("Odcinek 6 - wkrótce"))
+        self.assertIsNone(main.extract_episode_number("Odcinek 10 - Final"))
 
     def test_find_episodes_ignores_labels_with_additional_description(self):
         html = """
@@ -78,6 +83,30 @@ class AuthSessionTests(unittest.TestCase):
         self.assertEqual("Nie znaleziono nagłówków odcinków.", result.error)
         self.assertIsNone(result.latest_ready)
         self.assertIsNone(result.max_found)
+
+    def test_find_episodes_accepts_unlocked_final_episode_label(self):
+        html = """
+        <p class="toggler">Odcinek 9</p>
+        <p class="toggler">Odcinek 10 - Finał</p>
+        """
+
+        result = main.find_episodes(html)
+
+        self.assertIsNone(result.error)
+        self.assertEqual(10, result.latest_ready)
+        self.assertEqual(10, result.max_found)
+
+    def test_find_episodes_counts_locked_final_only_as_max_found(self):
+        html = """
+        <p class="toggler">Odcinek 9</p>
+        <p class="toggler"><img src="locked.png">Odcinek 10 - Finał</p>
+        """
+
+        result = main.find_episodes(html)
+
+        self.assertIsNone(result.error)
+        self.assertEqual(9, result.latest_ready)
+        self.assertEqual(10, result.max_found)
 
     def test_extract_auth_cookies_filters_only_session_cookies(self):
         cookies = [
